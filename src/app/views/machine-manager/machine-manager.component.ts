@@ -1,4 +1,4 @@
-import {Component, ElementRef, OnInit, ViewChild, ViewContainerRef} from '@angular/core';
+import {Component, OnInit, ViewContainerRef} from '@angular/core';
 import {ApiService} from '../../api.service';
 import {ActivatedRoute, Router} from '@angular/router';
 import {OneInputComponent} from '../../components/one-input/one-input.component';
@@ -16,15 +16,6 @@ export class MachineManagerComponent implements OnInit {
   machines: Array<any> = [];
   user = '';
   users: Array<any> = [];
-
-  changeOwnerMachine: any = {};
-  tagEditMachine: any = {}
-  changeOwnerUser: string = '';
-
-  tags = ['Unremovable', 'Tag 2', 'Tag 3'];
-  inputVisible = false;
-  inputValue = '';
-  @ViewChild('inputElement', {static: false}) inputElement?: ElementRef;
 
   constructor(private api: ApiService, private route: ActivatedRoute, private msg: NzMessageService,
               private modal: NzModalService, private viewContainerRef: ViewContainerRef,
@@ -50,77 +41,100 @@ export class MachineManagerComponent implements OnInit {
   }
 
   getList() {
-    let version = localStorage.getItem('serverUrl') ?? 'v0.23';
-
-      this.api.machineList(this.user).subscribe(x => {
-        if (version === 'v0.23'){
-          this.machines = x.nodes.sort((a: any, b: any) => parseInt(a.id) - parseInt(b.id));
-        }else{
-          this.machines = x.machines.sort((a: any, b: any) => parseInt(a.id) - parseInt(b.id));
-        }
-        this.getRoutes();
-        if (this.tagEditMachine.id) {
-          this.tagEditMachine = this.machines.find(x => x.id == this.tagEditMachine.id);
-        }
-      });
-    
-    
+    this.api.machineList(this.user).subscribe(x => {
+      this.machines = (x.nodes ?? [])
+        .map((node: any) => this.normalizeMachine(node))
+        .sort((a: any, b: any) => parseInt(a.id) - parseInt(b.id));
+    });
   }
 
-  getRoutes() {
-    this.api.routeList().subscribe(x => {
-      for (let r of x.routes) {
-        let m = this.machines.find(x => x.id === r.node.id);
-        if (m) {
-          if (['0.0.0.0/0', '::/0'].indexOf(r.prefix) !== -1) {
-            if (m['exitNodes']) {
-              m['exitNodes'].push(r);
-            } else {
-              m['exitNodes'] = [r]
-            }
-          } else {
-            if (m['subnets']) {
-              m['subnets'].push(r);
-            } else {
-              m['subnets'] = [r]
-            }
-          }
-        }
-      }
-      for (let m of this.machines) {
-        if (m.subnets) {
-          m['subnets_enabled_num'] = m.subnets.filter((sn: { enabled: any; }) => sn.enabled).length;
-        }
-        if (m.exitNodes) {
-          m['exitNode_enabled_num'] = m.exitNodes.filter((sn: { enabled: any; }) => sn.enabled).length;
-        }
-      }
-    })
+  normalizeMachine(node: any) {
+    const approvedRoutes = node.approvedRoutes ?? [];
+    const routePrefixes = Array.from(new Set([
+      ...(node.availableRoutes ?? []),
+      ...approvedRoutes,
+      ...(node.subnetRoutes ?? [])
+    ]));
+    const routes = routePrefixes.map((prefix: string) => ({
+      nodeId: node.id,
+      prefix,
+      advertised: (node.availableRoutes ?? []).includes(prefix) || (node.subnetRoutes ?? []).includes(prefix),
+      enabled: approvedRoutes.includes(prefix),
+      isPrimary: false
+    }));
+    const exitNodes = routes.filter(route => ['0.0.0.0/0', '::/0'].includes(route.prefix));
+    const subnets = routes.filter(route => !['0.0.0.0/0', '::/0'].includes(route.prefix));
+
+    return {
+      ...node,
+      tags: node.tags ?? [],
+      exitNodes,
+      subnets,
+      subnets_enabled_num: subnets.filter(route => route.enabled).length,
+      exitNode_enabled_num: exitNodes.filter(route => route.enabled).length,
+      lastSuccessfulUpdate: null
+    };
   }
 
-  onExpandChange(id: string, checked: boolean): void {
-    if (checked) {
-      this.expandSet.add(id);
-    } else {
-      this.expandSet.delete(id);
+  setRouteState(machine: any, prefix: string, enabled: boolean) {
+    const currentRoutes = machine.approvedRoutes ?? [];
+    const nextRoutes = enabled
+      ? Array.from(new Set([...currentRoutes, prefix]))
+      : currentRoutes.filter((route: string) => route !== prefix);
+
+    this.api.machineSetApprovedRoutes(machine.id, nextRoutes).subscribe(() => {
+      this.msg.success(`Route ${enabled ? 'Enable' : 'Disable'} success`);
+      this.getList();
+    });
+  }
+
+  enableRoute(machine: any, prefix: string) {
+    this.setRouteState(machine, prefix, true);
+  }
+
+  disableRoute(machine: any, prefix: string) {
+    this.setRouteState(machine, prefix, false);
+  }
+
+  routeTrackBy(_: number, route: any) {
+    return `${route.nodeId}:${route.prefix}`;
+  }
+
+  machineTrackBy(_: number, machine: any) {
+    return machine.id;
+  }
+
+  routeSummaryLabel(machine: any, type: 'subnet' | 'exitNode') {
+    if (type === 'subnet') {
+      return `SubNet ${machine.subnets_enabled_num}/${machine.subnets.length}`;
     }
+
+    return `ExitNode ${machine.exitNode_enabled_num}/${machine.exitNodes.length}`;
+  }
+
+  tagLabel(machine: any) {
+    if (machine.tags.length === 0) {
+      return 'None';
+    }
+
+    return machine.tags.join(', ');
   }
 
   renameMachine(machine: any) {
     this.modal.create({
-      nzTitle: `Rename User - ${machine.givenName}`,
+      nzTitle: `Rename Machine - ${machine.givenName}`,
       nzComponentParams: {notice: machine.givenName},
       nzContent: OneInputComponent,
       nzViewContainerRef: this.viewContainerRef,
       nzFooter: null
     }).afterClose.subscribe(x => {
       if (x) {
-        this.api.machineRename(machine.id, x).subscribe(x => {
+        this.api.machineRename(machine.id, x).subscribe(() => {
           this.msg.success('Machine Rename success');
           this.getList();
-        })
+        });
       }
-    })
+    });
   }
 
   deleteMachine(machine: any) {
@@ -134,30 +148,17 @@ export class MachineManagerComponent implements OnInit {
         this.api.machineDelete(machine.id).subscribe(_ => {
           this.msg.success('Machine delete success');
           this.getList();
-        })
+        });
       }
     });
   }
 
-  enableRoute(id: string) {
-    this.api.routeEnable(id).subscribe(x => {
-      this.msg.success('Route Enable success');
-      this.getList();
-    })
-  }
-
-  disableRoute(id: string) {
-    this.api.routeDisable(id).subscribe(x => {
-      this.msg.success('Route Disable success');
-      this.getList();
-    })
-  }
-
-  deleteRoute(id: string) {
-    this.api.routeDelete(id).subscribe(x => {
-      this.msg.success('Route Delete success');
-      this.getList();
-    })
+  onExpandChange(id: string, checked: boolean): void {
+    if (checked) {
+      this.expandSet.add(id);
+    } else {
+      this.expandSet.delete(id);
+    }
   }
 
   userChange(e: any) {
@@ -176,61 +177,16 @@ export class MachineManagerComponent implements OnInit {
     this.modal.create({
       nzTitle: `Register Machine For User: ${this.user}`,
       nzContent: OneInputComponent,
-      nzComponentParams: {notice: 'nodekey:xxxxxxxxxxxxxxxxxxxxxx'},
+      nzComponentParams: {notice: 'Registration ID (24 chars)'},
       nzViewContainerRef: this.viewContainerRef,
       nzFooter: null
     }).afterClose.subscribe(x => {
       if (x) {
-        this.api.machineRegister(this.user, 'nodekey:' + x.replace('nodekey:', '')).subscribe(x => {
+        this.api.machineRegister(this.user, x.trim()).subscribe(() => {
           this.msg.success('Register machine success');
           this.getList();
-        })
+        });
       }
-    })
-  }
-
-  changeOwner(m: any) {
-    this.changeOwnerMachine = m;
-  }
-
-  doChangeOwner() {
-    if (!this.changeOwnerUser) {
-      this.msg.error('Must select one user')
-      return;
-    }
-    this.api.machineChangeUser(this.changeOwnerMachine.id, this.changeOwnerUser).subscribe(_ => {
-      this.msg.success('Machine change owner success')
-      this.getList();
-      this.changeOwnerMachine = {}
-    })
-  }
-
-  handleClose(removedTag: {}): void {
-    this.tagEditMachine.forcedTags = this.tagEditMachine.forcedTags.filter((tag: {}) => tag !== removedTag);
-    this.updateTags(this.tagEditMachine.forcedTags);
-  }
-
-  showInput(): void {
-    this.inputVisible = true;
-    setTimeout(() => {
-      this.inputElement?.nativeElement.focus();
-    }, 10);
-  }
-
-  handleInputConfirm(): void {
-    if (this.inputValue && this.tagEditMachine.forcedTags.indexOf(this.inputValue) === -1) {
-      this.tagEditMachine.forcedTags = [...this.tagEditMachine.forcedTags, this.inputValue];
-    }
-    this.inputValue = '';
-    this.inputVisible = false;
-    this.updateTags(this.tagEditMachine.forcedTags);
-  }
-
-  updateTags(tags: Array<string>) {
-    this.api.machineTag(this.tagEditMachine.id, tags).subscribe(_ => {
-    }, _ => {
-    }, () => {
-      this.getList();
-    })
+    });
   }
 }

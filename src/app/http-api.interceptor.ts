@@ -3,22 +3,23 @@ import {
   HttpRequest,
   HttpHandler,
   HttpEvent,
-  HttpInterceptor, HttpResponse
+  HttpInterceptor
 } from '@angular/common/http';
-import {catchError, mergeMap, Observable, of} from 'rxjs';
-import {ActivatedRoute, Router} from '@angular/router';
+import {catchError, Observable, of} from 'rxjs';
+import {Router} from '@angular/router';
 import {NzMessageService} from 'ng-zorro-antd/message';
 
 @Injectable()
 export class HttpApiInterceptor implements HttpInterceptor {
 
-  constructor(private router: Router, private msg: NzMessageService, private route: ActivatedRoute) {
+  constructor(private router: Router, private msg: NzMessageService) {
   }
 
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    const serverKey = localStorage.getItem('serverKey') ?? '';
     const resetReq = request.clone({
       setHeaders: {
-        'Authorization': 'Bearer ' + localStorage.getItem('serverKey') ?? '',
+        Authorization: serverKey ? `Bearer ${serverKey}` : '',
         'Content-Type': 'application/json'
       },
       url: (localStorage.getItem('serverUrl') ?? '') + request.url

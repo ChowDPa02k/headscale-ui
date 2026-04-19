@@ -9,7 +9,7 @@ import {NzMessageService} from 'ng-zorro-antd/message';
   styleUrls: ['./login.component.css']
 })
 export class LoginComponent implements OnInit {
-  serverUrl = '/';
+  serverUrl = '';
   apiKeys = '';
   changeServerUrl = '';
   hsVersion = '';
@@ -20,8 +20,10 @@ export class LoginComponent implements OnInit {
   }
 
   ngOnInit() {
-    this.serverUrl = localStorage.getItem('serverUrl') ?? '/';
-    let apikey = localStorage.getItem('serverKey') ?? '';
+    this.serverUrl = localStorage.getItem('serverUrl') ?? '';
+    this.apiKeys = localStorage.getItem('serverKey') ?? '';
+    this.hsVersion = localStorage.getItem('hsVersion') ?? 'v0.28';
+    let apikey = this.apiKeys;
     if (apikey) {
       this.checkLogin();
     }
@@ -37,10 +39,10 @@ export class LoginComponent implements OnInit {
   }
 
   checkLogin() {
-    this.api.userList().subscribe(x => {
+    this.api.userList().subscribe(() => {
       this.router.navigateByUrl('');
     }, error => {
-      this.msg.error(error.error + 'teste');
+      this.msg.error(error.error?.message ?? error.error ?? 'Login failed');
     });
   }
 
@@ -51,10 +53,8 @@ export class LoginComponent implements OnInit {
       this.serverUrl = this.changeServerUrl;
     }
     
-    if(!this.hsVersion){
-      this.hsVersion = 'v0.23';
-    } else {
-      this.hsVersion = this.hsVersion
+    if (!this.hsVersion) {
+      this.hsVersion = 'v0.28';
     }
 
     localStorage.setItem('serverUrl', this.serverUrl);
@@ -63,8 +63,8 @@ export class LoginComponent implements OnInit {
   }
 
   showChangeServer() {
-
     this.changeServerUrl = localStorage.getItem('serverUrl') ?? '';
+    this.hsVersion = localStorage.getItem('hsVersion') ?? 'v0.28';
     this.changeServerShow = true;
   }
 

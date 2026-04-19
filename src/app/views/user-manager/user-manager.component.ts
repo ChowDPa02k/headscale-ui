@@ -30,18 +30,18 @@ export class UserManagerComponent implements OnInit {
     });
   }
 
-  getPreAuthKeys(user: string) {
-    this.api.preAuthKeyList(user).subscribe(x => {
-      this.preAuthKeys[user] = x.preAuthKeys;
-    })
+  getPreAuthKeys(user: any) {
+    this.api.preAuthKeyList().subscribe(x => {
+      this.preAuthKeys[user.id] = (x.preAuthKeys ?? []).filter((key: any) => key.user?.id === user.id);
+    });
   }
 
-  onExpandChange(name: string, checked: boolean): void {
+  onExpandChange(user: any, checked: boolean): void {
     if (checked) {
-      this.expandSet.add(name);
-      this.getPreAuthKeys(name);
+      this.expandSet.add(user.id);
+      this.getPreAuthKeys(user);
     } else {
-      this.expandSet.delete(name);
+      this.expandSet.delete(user.id);
     }
   }
 
@@ -61,47 +61,47 @@ export class UserManagerComponent implements OnInit {
     })
   }
 
-  renameUser(name: string) {
+  renameUser(user: any) {
     this.modal.create({
-      nzTitle: `Rename User - ${name}`,
-      nzComponentParams: {notice: name},
+      nzTitle: `Rename User - ${user.name}`,
+      nzComponentParams: {notice: user.name},
       nzContent: OneInputComponent,
       nzViewContainerRef: this.viewContainerRef,
       nzFooter: null
     }).afterClose.subscribe(x => {
       if (x) {
-        this.api.userRename(name, x).subscribe(x => {
+        this.api.userRename(user.id, x).subscribe(() => {
           this.msg.success('User Rename success');
           this.getList();
-        })
-      }
-    })
-  }
-
-  deleteUser(name: string) {
-    this.modal.warning({
-      nzTitle: 'Delete Confirm',
-      nzContent: `will delete user 【 ${name} 】 ,Are you sure？`,
-      nzOkDanger: true,
-      nzOkText: 'Delete',
-      nzCancelText: 'cancel',
-      nzOnOk: () => {
-        this.api.userDelete(name).subscribe(_ => {
-          this.msg.success('User delete success');
-          this.getList();
-        })
+        });
       }
     });
   }
 
-  createPreAuthKey(name: string) {
-    this.api.preAuthKeyAdd(name, '9999-03-23T13:41:44.928Z').subscribe(_ => {
-      this.msg.success('Create PreAuthKey success')
-      this.getPreAuthKeys(name);
-    })
+  deleteUser(user: any) {
+    this.modal.warning({
+      nzTitle: 'Delete Confirm',
+      nzContent: `will delete user 【 ${user.name} 】 ,Are you sure？`,
+      nzOkDanger: true,
+      nzOkText: 'Delete',
+      nzCancelText: 'cancel',
+      nzOnOk: () => {
+        this.api.userDelete(user.id).subscribe(_ => {
+          this.msg.success('User delete success');
+          this.getList();
+        });
+      }
+    });
   }
 
-  expirePreAuthKey(key: any) {
+  createPreAuthKey(user: any) {
+    this.api.preAuthKeyAdd(user.id, '9999-03-23T13:41:44.928Z').subscribe(_ => {
+      this.msg.success('Create PreAuthKey success');
+      this.getPreAuthKeys(user);
+    });
+  }
+
+  expirePreAuthKey(user: any, key: any) {
     this.modal.warning({
       nzTitle: 'Expire Confirm',
       nzContent: `will expire PreAuthKey 【 ${key.key} 】 ,Are you sure？`,
@@ -109,10 +109,10 @@ export class UserManagerComponent implements OnInit {
       nzOkText: 'Expire It',
       nzCancelText: 'cancel',
       nzOnOk: () => {
-        this.api.preAuthKeyExpire(key.user, key.key).subscribe(_ => {
+        this.api.preAuthKeyExpire(key.id).subscribe(_ => {
           this.msg.success('Expire PreAuthKey success');
-          this.getPreAuthKeys(key.user);
-        })
+          this.getPreAuthKeys(user);
+        });
       }
     });
   }

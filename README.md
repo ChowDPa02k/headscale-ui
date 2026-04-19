@@ -1,64 +1,124 @@
-# HeadscaleUi
+# Headscale UI
 [![main](https://github.com/simcu/headscale-ui/actions/workflows/main.yml/badge.svg)](https://github.com/simcu/headscale-ui/actions/workflows/main.yml)
 
-This is a static headscale admin ui, no backend enviroment required
+Headscale UI is a static admin interface for Headscale. It does not require its own backend service and can be served by any static web server.
 
-The current release is backward compatible with headscale v0.22 as well as compatible with the future headscale v0.23;
+## Compatibility
 
-## Thanks
+This fork has been updated for Headscale `v0.28`.
 
-Headscale - https://github.com/juanfont/headscale  version: v0.21.0
+Current support status:
 
-UI - https://github.com/NG-ZORRO/ng-zorro-antd  version: v15.0.3
+- `v0.28`: supported
+- `v0.23` to `v0.27`: login option kept for compatibility, but this release is primarily validated against `v0.28`
+- `v0.22` and below: legacy option still exists in the login screen, but not covered by the latest validation
 
-BaseFramework - https://angular.io/ version: 15.2.4
+## What Changed For Headscale v0.28
 
+Headscale `v0.28` changed several API behaviors compared with older releases. This update aligns the UI with the newer API by:
 
-## ScreenShots
+- switching machine operations to the `/api/v1/node` endpoints
+- updating user operations to use user IDs where required by newer API handlers
+- updating pre-auth key operations to use the current request and response shapes
+- updating route approval actions to use node route approval APIs instead of the old route management flow
+- adjusting login defaults to prefer `v0.28`
+- improving request handling and error messages during login
 
-<img width="1371" alt="image" src="https://user-images.githubusercontent.com/11401602/227347953-130835c6-7f58-4227-9a83-c6b40b9c2427.png">
-<img width="1371" alt="image" src="https://user-images.githubusercontent.com/11401602/227347584-905dd1e8-8b99-4292-8424-2f0e1399a031.png">
-<img width="1371" alt="image" src="https://user-images.githubusercontent.com/11401602/227347766-1d9d81c2-5e5a-43fb-ac3d-80d3a04c2f8c.png">
+## API Compatibility Note
 
-## Pre Requirement
-1. You need to generate a apikey use headscale-cli
-> on your headscale server run: headscale apikeys create -e 9999d
-2. You need a static web server space, or use docker
-3. (optional) If you deploy it on other domain, you need set headscale api's cors.
+This update removes the old version-switching logic for the legacy machine endpoints in the Angular API service.
 
-## Deploy Guide
-### A: use static web space
-emmm.... I don't know how to describe this action.... it is really very easy... 
+In practice:
 
-### B: use docker (k8s also, it's a nginx static webserver, no other required)
+- the UI now uses the Headscale `v0.28` node APIs as the primary implementation
+- legacy `/api/v1/machine/...` request branches were removed from the client service
+- legacy standalone route management calls were also removed from the client service
+- route updates are now performed through node approved-route APIs
 
-1. run command on your docker enviroment
+To reduce UI churn, several Angular service method names still keep the historical `machine*` naming, but they now call `/api/v1/node/...` endpoints internally.
 
-> docker run -d --name headscale-ui -p 8888:80 simcu/headscale-ui
+This means the current codebase is no longer a full dual-path implementation for both old `machine` APIs and newer `node` APIs.
 
-2. open http://127.0.0.1:8888/manager/ 
+## Current Functional Notes
 
-3. (optional)  if run it not on same domain with headscale,the system will error, don't warried, only click "Exit" on the top menu, you will redirect to login page.
+The `v0.28` flow was validated for:
 
-4.  if you deploy this standalone, on login page click "Change Server" then, input server url.
-5. input apikey , click "Login"
+- login
+- user listing, rename, and delete
+- node listing
+- node registration
+- node rename
+- node expiry and delete
+- route approval and removal through approved routes
+- pre-auth key list, create, and expire
 
-### C: use caddy
+Known limitation in `v0.28` mode:
+
+- tag editing is currently shown as read-only in the machine view
+
+## Requirements
+
+1. Generate an API key with the Headscale CLI:
+
+   ```bash
+   headscale apikeys create -e 9999d
+   ```
+
+2. Host the built UI on a static web server, or run it with Docker
+3. If the UI is hosted on a different origin from Headscale, configure CORS on the Headscale side
+
+## Deployment
+
+### Static Hosting
+
+Build the application and serve the output directory with any static web server.
+
+### Docker
+
+```bash
+docker run -d --name headscale-ui -p 8888:80 simcu/headscale-ui
 ```
-domain.com {
-        @ui {
-                path_regexp (/$)|(\.)
-        }
-        handle @ui {
-                root * /www/headscale-ui
-                try_files {path} /index.html
-                file_server
-        }
 
-        reverse_proxy 127.0.0.1:7070
+Then open:
+
+```text
+http://127.0.0.1:8888/manager/
+```
+
+If the UI is not hosted on the same origin as Headscale:
+
+1. open the login page
+2. click `Change Server`
+3. enter the Headscale server URL
+4. enter the API key
+5. log in
+
+### Caddy Example
+
+```caddy
+domain.com {
+    @ui {
+        path_regexp (/$)|(\.)
+    }
+
+    handle @ui {
+        root * /www/headscale-ui
+        try_files {path} /index.html
+        file_server
+    }
+
+    reverse_proxy 127.0.0.1:7070
 }
 ```
 
-## Notice
-1. ServerUrl and ApiKey are saved in localstorage in plain text. 
-2. you will only need login once.if apikey is invalid , system will require login again.
+## Security Notice
+
+- `serverUrl` and `apiKey` are stored in `localStorage` in plain text
+- users usually only need to log in once
+- if the API key becomes invalid, the UI will require login again
+
+## Credits
+
+- Headscale: https://github.com/juanfont/headscale
+- NG-ZORRO: https://github.com/NG-ZORRO/ng-zorro-antd
+- Angular: https://angular.io/
